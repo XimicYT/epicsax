@@ -15,6 +15,12 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 10000;
 const GLOBAL_ROOM = 'the-matrix';
 let currentHostId = null;
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'Matrix is awake', 
+        time: Date.now() 
+    });
+});
 
 io.on('connection', (socket) => {
     console.log(`[CONNECT] Device linked: ${socket.id}`);
