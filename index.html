@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DICTATOR MATRIX: Absolute Sync</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body,
+        html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: '-apple-system', BlinkMacSystemFont, sans-serif;
+            color: #ffffff;
+        }
+
+        #sync-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        body.playing #sync-video {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #ui-layer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, rgba(10, 0, 0, 0.95) 0%, rgba(5, 0, 0, 1) 100%);
+            transition: opacity 0.5s ease;
+        }
+
+        body.playing #ui-layer {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .screen {
+            display: none;
+            text-align: center;
+            backdrop-filter: blur(20px);
+            background: rgba(255, 0, 0, 0.05);
+            padding: 2.5rem;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 50, 50, 0.2);
+            width: 90%;
+            max-width: 440px;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            margin-bottom: 1.5rem;
+            text-transform: uppercase;
+            color: #ff3333;
+            text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #ff0000 0%, #aa0000 100%);
+            border: none;
+            color: #fff;
+            font-weight: 900;
+            padding: 1.2rem;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+            letter-spacing: 2px;
+            font-size: 1.1rem;
+            box-shadow: 0 10px 30px rgba(255, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+        }
+
+        .master-btn {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff0000, #aa0000);
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 0 50px rgba(255, 0, 0, 0.6);
+            margin: 1rem auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            letter-spacing: 2px;
+            transition: transform 0.2s;
+        }
+
+        .master-btn:hover {
+            transform: scale(1.1);
+        }
+
+        #debug-terminal {
+            width: 90%;
+            max-width: 600px;
+            height: 180px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid #ff3333;
+            border-radius: 12px;
+            margin-top: 2rem;
+            padding: 1rem;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            color: #ff8888;
+            text-align: left;
+            pointer-events: auto;
+        }
+
+        .log-entry {
+            border-bottom: 1px solid rgba(255, 0, 0, 0.2);
+            padding-bottom: 4px;
+            margin-bottom: 4px;
+        }
+
+        .log-warn {
+            color: #ffaa00;
+            font-weight: bold;
+        }
+
+        .log-error {
+            color: #ff0000;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .log-success {
+            color: #00ff00;
+            font-weight: bold;
+        }
+
+        .log-god {
+            color: #00ffff;
+            font-weight: bold;
+        }
+
+        .source-box {
+            margin-top: 1.5rem;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid #00ffff;
+        }
+
+        .source-box p {
+            font-size: 0.75rem;
+            color: #00ffff;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .source-box input {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            color: #fff;
+            font-size: 0.9rem;
+            margin-bottom: 0.8rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <video id="sync-video" src="video.mp4" playsinline preload="auto"></video>
+
+    <div id="ui-layer">
+        <div id="screen-init" class="screen active">
+            <h1>Matrix Gateway</h1>
+            <p style="color: #ccc; margin-bottom: 2rem; font-size: 0.9rem;">Initializing protocol...</p>
+            <button class="btn" onclick="initializeUplink()">Engage Uplink</button>
+        </div>
+
+        <div id="screen-loading" class="screen">
+            <h1 style="color: #ffaa00;">Syncing Time</h1>
+            <p style="color: #ccc;">Aligning hardware clocks with server...</p>
+        </div>
+
+        <div id="screen-host" class="screen">
+            <h1 style="color: #00ffff; text-shadow: 0 0 10px rgba(0,255,255,0.5);">Dictator Control</h1>
+            <p id="peer-count" style="color: #ccc; margin-bottom: 1rem; font-size: 1.2rem; font-weight: bold;">0 Slaves
+                Bound</p>
+
+            <button class="master-btn"
+                style="background: linear-gradient(135deg, #00ffff, #008888); box-shadow: 0 0 50px rgba(0,255,255,0.6);"
+                onclick="togglePlaybackHost(event)">Play</button>
+
+            <div class="source-box">
+                <p>Override Video Source (MP4 URL)</p>
+                <input type="text" id="video-url-input" placeholder="https://epicsax.netlify.app/rick.mp4"
+                    autocomplete="off">
+                <button class="btn"
+                    style="background: #00ffff; color: #000; padding: 0.8rem; margin: 0; box-shadow: none;"
+                    onclick="changeVideoSource()">Broadcast URL</button>
+            </div>
+        </div>
+
+        <div id="screen-peer" class="screen">
+            <h1>Node Bound</h1>
+            <button class="master-btn" style="pointer-events: none; opacity: 0.5; background: #333; box-shadow: none;"
+                id="peer-indicator">Standby</button>
+            <p style="color: #888; margin-top: 1rem; font-size: 0.8rem;">Awaiting commands...</p>
+        </div>
+
+        <div id="debug-terminal">
+            <div class="log-entry">SYSTEM: AWAITING USER INITIALIZATION.</div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = "https://epicsax.onrender.com/";
+
+        const video = document.getElementById('sync-video');
+        let socket = null;
+        let isPlaying = false;
+        let isHostMode = false;
+
+        let clockOffset = 0;
+        let isClockLocked = false;
+        let heartbeatInterval = null;
+        let peerCount = 0;
+        let lastHeartbeat = null;
+        let scheduledPlayData = null;
+
+        function sysLog(msg, level = 'info') {
+            const term = document.getElementById('debug-terminal');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${level}`;
+            entry.innerText = `[${performance.now().toFixed(0)}] ${msg}`;
+            term.appendChild(entry);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function initializeUplink() {
+            video.play().then(() => { video.pause(); video.currentTime = 0; }).catch(() => { });
+            showScreen('screen-loading');
+            connectToServer();
+        }
+
+        function getMatrixTime() {
+            return performance.now() + clockOffset;
+        }
+
+        function aggressiveSync(onComplete) {
+            let pingsSent = 0;
+            let pingsReceived = 0;
+            const maxPings = 10;
+            const syncHistory = [];
+
+            const fallbackTimeout = setTimeout(() => {
+                if (!isClockLocked) {
+                    if (syncHistory.length > 0) finalizeSync(syncHistory, onComplete);
+                    else {
+                        sysLog(`CRITICAL: Server ping timeout. Retrying...`, 'error');
+                        aggressiveSync(onComplete);
+                    }
+                }
+            }, 3000);
+
+            const burstInterval = setInterval(() => {
+                if (pingsSent >= maxPings) {
+                    clearInterval(burstInterval);
+                    return;
+                }
+
+                const startPing = performance.now();
+                socket.emit('sync-ping', (serverTime) => {
+                    const rtt = performance.now() - startPing;
+                    const offset = (serverTime + (rtt / 2)) - performance.now();
+                    syncHistory.push({ rtt, offset });
+                    pingsReceived++;
+
+                    if (pingsReceived === maxPings && !isClockLocked) {
+                        clearTimeout(fallbackTimeout);
+                        finalizeSync(syncHistory, onComplete);
+                    }
+                });
+                pingsSent++;
+            }, 100);
+        }
+
+        function finalizeSync(history, onComplete) {
+            history.sort((a, b) => a.rtt - b.rtt);
+            const best3 = history.slice(0, 3);
+            clockOffset = best3.reduce((sum, p) => sum + p.offset, 0) / best3.length;
+            isClockLocked = true;
+            sysLog(`CLOCK: HARD LOCKED.`, 'success');
+            setInterval(maintenancePing, 4000);
+            if (onComplete) onComplete();
+        }
+
+        function maintenancePing() {
+            const startPing = performance.now();
+            socket.emit('sync-ping', (serverTime) => {
+                const rtt = performance.now() - startPing;
+                if (rtt < 100) clockOffset = (serverTime + (rtt / 2)) - performance.now();
+            });
+        }
+
+        function connectToServer() {
+            socket = io(SERVER_URL);
+            socket.on('connect', () => {
+                sysLog(`UPLINK: Connected to Relay.`);
+                aggressiveSync(() => {
+                    sysLog(`ROUTING: Requesting entry...`);
+                    socket.emit('request-entry', (response) => {
+                        if (response.role === 'host') initHost();
+                        else initPeer();
+                    });
+                });
+            });
+        }
+
+        // ==========================================
+        // SEAMLESS INFINITE LOOP CORE DETECTOR
+        // ==========================================
+        video.addEventListener('ended', () => {
+            if (isHostMode) {
+                sysLog(`LOOP: End of stream detected. Recycling matrix...`, 'log-god');
+
+                // 150ms micro-runway to account for packet serialization
+                const executeTime = getMatrixTime() + 150;
+                isPlaying = true;
+
+                // Send the precise execution command starting from position 0.00
+                socket.emit('sync-command', { action: 'play', targetTime: executeTime, position: 0 });
+
+                // Reset host local countdown
+                scheduledPlayData = { targetTime: executeTime, position: 0 };
+            } else {
+                sysLog(`NODE: Stream finished. Awaiting Dictator loop cycle...`, 'warn');
+            }
+        });
+
+        // ==========================================
+        // DICTATOR RUNTIME ENGINE
+        // ==========================================
+        function dictationLoop() {
+            const currentMatrixTime = getMatrixTime();
+
+            if (scheduledPlayData && currentMatrixTime >= scheduledPlayData.targetTime) {
+                document.body.classList.add('playing');
+                try {
+                    if (!isNaN(video.duration)) {
+                        video.currentTime = scheduledPlayData.position;
+                    }
+                } catch (e) {
+                    sysLog(`SEEK FAILURE: Waiting for buffer stream`, 'warn');
+                }
+
+                const p = video.play();
+                if (p !== undefined) p.catch(() => sysLog(`Autoplay Guard Triggered. Tap UI.`, 'error'));
+                scheduledPlayData = null;
+            }
+
+            if (isPlaying && !isHostMode && !video.paused && !scheduledPlayData && lastHeartbeat) {
+                if (!isNaN(video.duration)) {
+                    const transitTime = (currentMatrixTime - lastHeartbeat.matrixTime) / 1000;
+                    const ghostPlayhead = lastHeartbeat.hostVideoTime + transitTime;
+                    const drift = ghostPlayhead - video.currentTime;
+
+                    if (Math.abs(drift) > 0.25) {
+                        sysLog(`SNAP: Drift detected (${Math.round(drift * 1000)}ms). Aligning playheads.`, 'error');
+                        try { video.currentTime = ghostPlayhead; } catch (e) { }
+                    }
+                    else if (Math.abs(drift) > 0.015) {
+                        video.playbackRate = Math.max(0.8, Math.min(1.2, 1.0 + (drift * 2.5)));
+                    }
+                    else {
+                        video.playbackRate = 1.0;
+                    }
+                }
+            }
+            requestAnimationFrame(dictationLoop);
+        }
+        requestAnimationFrame(dictationLoop);
+
+        // ==========================================
+        // HOST IMPLEMENTATION
+        // ==========================================
+        function initHost() {
+            isHostMode = true;
+            showScreen('screen-host');
+            sysLog(`SYSTEM: GRANTED DICTATOR AUTHORITY.`, 'log-god');
+
+            socket.on('peer-joined', () => {
+                peerCount++;
+                document.getElementById('peer-count').innerText = `${peerCount} Slaves Bound`;
+
+                socket.emit('sync-command', {
+                    action: 'force-state',
+                    url: video.src,
+                    isPlaying: isPlaying,
+                    targetTime: isPlaying ? getMatrixTime() + 500 : null,
+                    position: isNaN(video.duration) ? 0 : video.currentTime
+                });
+            });
+
+            socket.on('peer-left', (size) => {
+                peerCount = size;
+                document.getElementById('peer-count').innerText = `${peerCount} Slaves Bound`;
+            });
+        }
+
+        function changeVideoSource() {
+            const newUrl = document.getElementById('video-url-input').value.trim();
+            if (!newUrl) return;
+
+            isPlaying = false;
+            video.pause();
+            document.body.classList.remove('playing');
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+            const btn = document.querySelector('#screen-host .master-btn');
+            if (btn) btn.innerText = "PLAY";
+
+            video.src = newUrl;
+            video.load();
+            sysLog(`HOST: Global override engaged. Routing new target source.`, 'log-god');
+
+            socket.emit('sync-command', { action: 'source-override', url: newUrl });
+            document.getElementById('video-url-input').value = "";
+        }
+
+        function togglePlaybackHost(event) {
+            if (event) event.stopPropagation();
+            if (!isClockLocked) return;
+
+            const btn = document.querySelector('#screen-host .master-btn');
+
+            if (!isPlaying) {
+                const executeTime = getMatrixTime() + 400;
+                isPlaying = true;
+                if (btn) btn.innerText = "PAUSE";
+
+                const currentPos = isNaN(video.duration) ? 0 : video.currentTime;
+                socket.emit('sync-command', { action: 'play', targetTime: executeTime, position: currentPos });
+
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+                heartbeatInterval = setInterval(() => {
+                    if (!video.paused && !isNaN(video.duration)) {
+                        socket.emit('sync-command', { action: 'heartbeat', matrixTime: getMatrixTime(), hostVideoTime: video.currentTime });
+                    }
+                }, 200);
+
+                document.body.classList.add('playing');
+                setTimeout(() => {
+                    const p = video.play();
+                    if (p !== undefined) p.catch(e => sysLog(`PLAY FAILURE: ${e.message}`, 'error'));
+                }, Math.max(0, executeTime - getMatrixTime()));
+
+            } else {
+                isPlaying = false;
+                if (btn) btn.innerText = "PLAY";
+                video.pause();
+                document.body.classList.remove('playing');
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+                socket.emit('sync-command', { action: 'pause' });
+                sysLog(`HOST: Halting matrix.`, 'warn');
+            }
+        }
+
+        document.addEventListener('click', (e) => {
+            if (isHostMode && isPlaying && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                togglePlaybackHost(e);
+            }
+            if (!isHostMode && isPlaying && video.paused) {
+                video.play().catch(() => { });
+            }
+        });
+
+        // ==========================================
+        // PEER IMPLEMENTATION
+        // ==========================================
+        function initPeer() {
+            showScreen('screen-peer');
+            sysLog(`SYSTEM: BOUND AS SLAVE NODE.`, 'success');
+            const indicator = document.getElementById('peer-indicator');
+            indicator.innerText = "LOCKED";
+            indicator.style.background = "#ff0000";
+            indicator.style.boxShadow = "0 0 30px #ff0000";
+
+            socket.on('sync-execute', (data) => {
+                if (data.action === 'play') {
+                    isPlaying = true;
+                    scheduledPlayData = { targetTime: data.targetTime, position: data.position };
+                    sysLog(`NODE: Sync sequence initialized.`, 'success');
+                }
+                else if (data.action === 'heartbeat') {
+                    lastHeartbeat = { matrixTime: data.matrixTime, hostVideoTime: data.hostVideoTime };
+                }
+                else if (data.action === 'pause') {
+                    isPlaying = false;
+                    scheduledPlayData = null;
+                    lastHeartbeat = null;
+                    video.pause();
+                    video.playbackRate = 1.0;
+                    document.body.classList.remove('playing');
+                    sysLog(`NODE: Dictator paused operations. Standby.`, 'log-warn');
+                }
+                else if (data.action === 'source-override') {
+                    video.src = data.url;
+                    video.load();
+                    sysLog(`NODE: Source tracking updated by command.`, 'error');
+                }
+                else if (data.action === 'force-state') {
+                    if (video.src !== data.url) {
+                        video.src = data.url;
+                        video.load();
+                    }
+                    if (data.isPlaying && data.targetTime) {
+                        isPlaying = true;
+                        scheduledPlayData = { targetTime: data.targetTime, position: data.position };
+                    } else {
+                        try { if (!isNaN(video.duration)) video.currentTime = data.position; } catch (e) { }
+                    }
+                }
+            });
+
+            socket.on('host-disconnected', () => {
+                sysLog(`SYSTEM: Dictator lost. Resetting protocol...`, 'error');
+                setTimeout(() => location.reload(), 1500);
+            });
+        }
+    </script>
+</body>
+
+</html>
