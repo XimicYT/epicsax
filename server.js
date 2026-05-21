@@ -1,12 +1,15 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-
 const app = express();
+const http = require('http');
 const server = http.createServer(app);
 
+// THE DICTATOR'S FIREWALL OVERRIDE
+const { Server } = require("socket.io");
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: {
+        origin: "*", // This tells the server to accept connections from Netlify, Render, or anywhere else
+        methods: ["GET", "POST"]
+    }
 });
 
 const PORT = process.env.PORT || 10000;
